@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard BOM, Stock, Purchasing</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; }
+    header {
+      background: linear-gradient(90deg, #2c3e50, #34495e);
+      color: white; padding: 1rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 1.8rem; }
+    .reset-btn {
+      background: #e74c3c; color: white; border: none;
+      cursor: pointer; padding: 8px 12px; border-radius: 5px;
+    }
+    .container {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; padding: 20px;
+    }
+    .card {
+      background: white; padding: 20px; border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    th { background: #3498db; color: white; }
+    input, button { margin: 5px; padding: 8px; }
+    canvas { width: 100% !important; height: 400px !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Integrated Production Dashboard</h1>
+    <button type="button" class="reset-btn" onclick="resetAll()">Reset All</button>
+  </header>
+
+  <div class="container">
+    <!-- BOM -->
+    <div class="card">
+      <h2>Bill of Material</h2>
+      <form id="bomForm">
+        <input type="text" id="bomItem" placeholder="Item Name" required>
+        <input type="number" id="bomQty" placeholder="Quantity" required>
+        <button type="submit">Add BOM</button>
+      </form>
+      <table>
+        <thead><tr><th>Item</th><th>Quantity</th></tr></thead>
+        <tbody id="bomTable"></tbody>
+      </table>
+    </div>
+
+    <!-- Stock -->
+    <div class="card">
+      <h2>Stock</h2>
+      <form id="stockForm">
+        <input type="text" id="stockItem" placeholder="Item Name" required>
+        <input type="number" id="stockQty" placeholder="Quantity" required>
+        <button type="submit">Add Stock</button>
+      </form>
+      <table>
+        <thead><tr><th>Item</th><th>Quantity</th></tr></thead>
+        <tbody id="stockTable"></tbody>
+      </table>
+    </div>
+
+    <!-- Purchasing -->
+    <div class="card">
+      <h2>Purchasing</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Quantity Needed</th></tr></thead>
+        <tbody id="purchaseTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Grafik -->
+  <div class="container">
+    <div class="card" style="grid-column: span 3;">
+      <h2>Grafik BOM, Stock, Purchasing</h2>
+      <canvas id="dashboardChart"></canvas>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const stockData = {};
+    const bomData = [];
+    const purchaseData = {};
+    let chart;
+
+    // Tambah BOM
+    document.getElementById('bomForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const item = document.getElementById('bomItem').value;
+      const qty = parseInt(document.getElementById('bomQty').value);
+      bomData.push({item, qty});
+      addRow('bomTable', item, qty);
+      checkIntegration(item, qty);
+      updateChart();
+      e.target.reset();
+    });
+
+    // Tambah Stock
+    document.getElementById('stockForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const item = document.getElementById('stockItem').value;
+      const qty = parseInt(document.getElementById('stockQty').value);
+      stockData[item] = (stockData[item] || 0) + qty;
+      addRow('stockTable', item, stockData[item]);
+      updateChart();
+      e.target.reset();
+    });
+
+    // Utility function
+    function addRow(tableId, item, qty) {
+      const table = document.getElementById(tableId);
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${item}</td><td>${qty}</td>`;
+      table.appendChild(row);
+    }
+
+    // Reset All
+    function resetAll() {
+      document.getElementById('bomTable').innerHTML = "";
+      document.getElementById('stockTable').innerHTML = "";
+      document.getElementById('purchaseTable').innerHTML = "";
+      bomData.length = 0;
+      Object.keys(stockData).forEach(k => delete stockData[k]);
+      Object.keys(purchaseData).forEach(k => delete purchaseData[k]);
+      if (chart) chart.destroy();
+      alert("Semua data BOM, Stock, Purchasing, dan Grafik sudah direset!");
+    }
+
+    // Integrasi BOM dengan Stock & Purchasing
+    function checkIntegration(item, qty) {
+      const available = stockData[item] || 0;
+      if (available < qty) {
+        const need = qty - available;
+        purchaseData[item] = need;
+        addRow('purchaseTable', item, need);
+      }
+    }
+
+    // Update Chart
+    function updateChart() {
+      const labels = [...new Set([...bomData.map(d => d.item), ...Object.keys(stockData), ...Object.keys(purchaseData)])];
+      const bomValues = labels.map(l => {
+        const found = bomData.find(d => d.item === l);
+        return found ? found.qty : 0;
+      });
+      const stockValues = labels.map(l => stockData[l] || 0);
+      const purchaseValues = labels.map(l => purchaseData[l] || 0);
+
+      const ctx = document.getElementById('dashboardChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'BOM', data: bomValues, backgroundColor: '#3498db' },
+            { label: 'Stock', data: stockValues, backgroundColor: '#2ecc71' },
+            { label: 'Purchasing', data: purchaseValues, backgroundColor: '#e74c3c' }
+          ]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+      });
+    }
+  </script>
+</body>
+</html>
+
