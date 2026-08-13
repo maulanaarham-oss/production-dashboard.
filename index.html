@@ -82,11 +82,24 @@
     </div>
   </div>
 
+  <!-- Firebase & Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
   <script>
-    const stockData = {};
-    const bomData = [];
-    const purchaseData = {};
+    // Konfigurasi Firebase
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     let chart;
 
     // Tambah BOM
@@ -94,10 +107,7 @@
       e.preventDefault();
       const item = document.getElementById('bomItem').value;
       const qty = parseInt(document.getElementById('bomQty').value);
-      bomData.push({item, qty});
-      addRow('bomTable', item, qty);
-      checkIntegration(item, qty);
-      updateChart();
+      db.ref('bom').push({ item, qty });
       e.target.reset();
     });
 
@@ -106,10 +116,37 @@
       e.preventDefault();
       const item = document.getElementById('stockItem').value;
       const qty = parseInt(document.getElementById('stockQty').value);
-      stockData[item] = (stockData[item] || 0) + qty;
-      addRow('stockTable', item, stockData[item]);
-      updateChart();
+      db.ref('stock').push({ item, qty });
       e.target.reset();
+    });
+
+    // Reset All
+    function resetAll() {
+      db.ref('bom').remove();
+      db.ref('stock').remove();
+      db.ref('purchase').remove();
+      if (chart) chart.destroy();
+      alert("Semua data BOM, Stock, Purchasing, dan Grafik sudah direset!");
+    }
+
+    // Listener BOM
+    db.ref('bom').on('value', snapshot => {
+      document.getElementById('bomTable').innerHTML = "";
+      snapshot.forEach(child => {
+        const { item, qty } = child.val();
+        addRow('bomTable', item, qty);
+      });
+      updateChart();
+    });
+
+    // Listener Stock
+    db.ref('stock').on('value', snapshot => {
+      document.getElementById('stockTable').innerHTML = "";
+      snapshot.forEach(child => {
+        const { item, qty } = child.val();
+        addRow('stockTable', item, qty);
+      });
+      updateChart();
     });
 
     // Utility function
@@ -120,48 +157,45 @@
       table.appendChild(row);
     }
 
-    // Reset All
-    function resetAll() {
-      document.getElementById('bomTable').innerHTML = "";
-      document.getElementById('stockTable').innerHTML = "";
-      document.getElementById('purchaseTable').innerHTML = "";
-      bomData.length = 0;
-      Object.keys(stockData).forEach(k => delete stockData[k]);
-      Object.keys(purchaseData).forEach(k => delete purchaseData[k]);
-      if (chart) chart.destroy();
-      alert("Semua data BOM, Stock, Purchasing, dan Grafik sudah direset!");
-    }
-
-    // Integrasi BOM dengan Stock & Purchasing
-    function checkIntegration(item, qty) {
-      const available = stockData[item] || 0;
-      if (available < qty) {
-        const need = qty - available;
-        purchaseData[item] = need;
-        addRow('purchaseTable', item, need);
-      }
-    }
-
     // Update Chart
     function updateChart() {
-      const labels = [...new Set([...bomData.map(d => d.item), ...Object.keys(stockData), ...Object.keys(purchaseData)])];
-      const bomValues = labels.map(l => {
-        const found = bomData.find(d => d.item === l);
+      const bom = [];
+      const stock = [];
+      const labels = new Set();
+
+      db.ref('bom').once('value', snap => {
+        snap.forEach(child => {
+          labels.add(child.val().item);
+          bom.push(child.val());
+        });
+      });
+
+      db.ref('stock').once('value', snap => {
+        snap.forEach(child => {
+          labels.add(child.val().item);
+          stock.push(child.val());
+        });
+      });
+
+      const lbls = Array.from(labels);
+      const bomValues = lbls.map(l => {
+        const found = bom.find(d => d.item === l);
         return found ? found.qty : 0;
       });
-      const stockValues = labels.map(l => stockData[l] || 0);
-      const purchaseValues = labels.map(l => purchaseData[l] || 0);
+      const stockValues = lbls.map(l => {
+        const found = stock.find(d => d.item === l);
+        return found ? found.qty : 0;
+      });
 
       const ctx = document.getElementById('dashboardChart').getContext('2d');
       if (chart) chart.destroy();
       chart = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: labels,
+          labels: lbls,
           datasets: [
             { label: 'BOM', data: bomValues, backgroundColor: '#3498db' },
-            { label: 'Stock', data: stockValues, backgroundColor: '#2ecc71' },
-            { label: 'Purchasing', data: purchaseValues, backgroundColor: '#e74c3c' }
+            { label: 'Stock', data: stockValues, backgroundColor: '#2ecc71' }
           ]
         },
         options: { responsive: true, scales: { y: { beginAtZero: true } } }
